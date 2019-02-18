@@ -8,8 +8,12 @@ if [ -e /etc/firehol/ipsets/ipset-names.latest ];
 then
     ipset restore < /etc/firehol/ipsets/ipset-names.latest
 fi
-for i in `ipset list -n`;
+
+
+for i in `ls /etc/firehol/ipsets/*.source`;
 do
+    i=${i##*/}
+    i="${i%.*}"
     ipset-apply $i
     if [[ -z `iptables -L INPUT | grep "match-set $i src"` ]];
     then
