@@ -16,7 +16,7 @@ if [ $? == 1 ]; then
   iptables -A DOCKER-USER -j FIREHOL_BLACKLIST
 fi
 
-for i in `ls /etc/firehol/ipsets/*.enabled`;
+for i in /etc/firehol/ipsets/*.enabled;
 do
     i="${i##*/}"
     i="${i%.*}"

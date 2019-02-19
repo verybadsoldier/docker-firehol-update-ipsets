@@ -33,6 +33,7 @@ RUN apk add --no-cache --virtual .firehol_builddep autoconf automake make && \
 ADD enable /bin/enable
 ADD disable /bin/disable
 ADD update-ipsets-periodic /bin/update-ipsets-periodic
+ADD update-common.sh /bin
 
 RUN update-ipsets -s
 VOLUME /etc/firehol/ipsets

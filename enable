@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source /bin/update-common
+source /bin/update-common.sh
 
 wait () {
     while [ "$(lsof -w -- /var/run/update-ipsets.lock)" ];
