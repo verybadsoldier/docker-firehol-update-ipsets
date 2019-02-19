@@ -1,10 +1,9 @@
 #!/bin/bash
 
-iptables -D INPUT -m set --match-set $1 src -j DROP
-iptables -D DOCKER-USER -m set --match-set $1 src -j DROP
+iptables -D FIREHOL_BLACKLIST -m set --match-set $1 src -j DROP
 
-# delete the actual FireHOL activation
+# delete the actual FireHOL activation - TODO: currently dependend lists will remain active!
 rm /etc/firehol/ipsets/$1.source
+rm /etc/firehol/ipsets/$1.enabled
 
-ipset destroy $1
 ipset save | grep create > /etc/firehol/ipsets/ipset-names.latest # save the latest ipsets (names only)

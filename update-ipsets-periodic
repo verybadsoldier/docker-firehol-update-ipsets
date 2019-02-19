@@ -9,19 +9,21 @@ then
     ipset restore < /etc/firehol/ipsets/ipset-names.latest
 fi
 
+iptables -n --list FIREHOL_BLACKLIST >/dev/null 2>&1
+if [ $? == 1 ]; then
+  iptables -N FIREHOL_BLACKLIST
+  iptables -A INPUT -j FIREHOL_BLACKLIST
+  iptables -A DOCKER-USER -j FIREHOL_BLACKLIST
+fi
 
-for i in `ls /etc/firehol/ipsets/*.source`;
+for i in `ls /etc/firehol/ipsets/*.enabled`;
 do
-    i=${i##*/}
+    i="${i##*/}"
     i="${i%.*}"
     ipset-apply $i
-    if [[ -z `iptables -L INPUT | grep "match-set $i src"` ]];
+    if [[ -z `iptables -L FIREHOL_BLACKLIST | grep "match-set $i src"` ]];
     then
-        iptables -I INPUT -m set --match-set $i src -j DROP
-    fi
-    if [[ -z `iptables -L DOCKER-USER | grep "match-set $i src"` ]];
-    then
-        iptables -I DOCKER-USER -m set --match-set $i src -j DROP
+        iptables -I FIREHOL_BLACKLIST -m set --match-set $i src -j DROP
     fi
 done
 
