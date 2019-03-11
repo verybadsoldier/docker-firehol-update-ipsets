@@ -16,12 +16,12 @@ if [ $? == 1 ]; then
   iptables -I DOCKER-USER -j FIREHOL_BLACKLIST
 fi
 
-for i in /etc/firehol/ipsets/*.enabled;
+for i in $(find /etc/firehol/ipsets -maxdepth 1 -name "*.enabled");
 do
     i="${i##*/}"
     i="${i%.*}"
     ipset-apply $i
-    if [[ -z `iptables -L FIREHOL_BLACKLIST | grep "match-set $i src"` ]];
+    if [[ -z $(iptables -L FIREHOL_BLACKLIST | grep "match-set $i src") ]];
     then
         iptables -I FIREHOL_BLACKLIST -m set --match-set $i src -j DROP
     fi
