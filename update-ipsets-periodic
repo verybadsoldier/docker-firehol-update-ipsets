@@ -12,8 +12,8 @@ fi
 iptables -n --list FIREHOL_BLACKLIST >/dev/null 2>&1
 if [ $? == 1 ]; then
   iptables -N FIREHOL_BLACKLIST
-  iptables -A INPUT -j FIREHOL_BLACKLIST
-  iptables -A DOCKER-USER -j FIREHOL_BLACKLIST
+  iptables -I INPUT -j FIREHOL_BLACKLIST
+  iptables -I DOCKER-USER -j FIREHOL_BLACKLIST
 fi
 
 for i in /etc/firehol/ipsets/*.enabled;
