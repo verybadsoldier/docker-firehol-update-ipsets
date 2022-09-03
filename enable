@@ -49,7 +49,7 @@ done
 ipset-apply $1
 ipset save | grep create > /etc/firehol/ipsets/ipset-names.latest # save the latest ipsets (names only)
 
-if [[ -z `iptables -L FIREHOL_BLACKLIST | grep "match-set $1 src"` ]];
+if [[ -z `${IPTABLES_CMD} -L FIREHOL_BLACKLIST | grep "match-set $1 src"` ]];
 then
-    iptables -I FIREHOL_BLACKLIST -m set --match-set $1 src -j DROP
+    ${IPTABLES_CMD} -I FIREHOL_BLACKLIST -m set --match-set $1 src -j DROP
 fi
