@@ -39,14 +39,21 @@ ADD disable /bin/disable
 ADD update-ipsets-periodic /bin/update-ipsets-periodic
 ADD update-common.sh /bin
 
-# use nf tables by default (e.g.Ubuntu >= 20.04)
-ENV IPTABLES_CMD iptables-nft
+# choose iptables to use
+ENV IPTABLES_CMD iptables-legacy
+# ENV IPTABLES_CMD iptables-nft
 
 # a robust default set of lists (will only be enabled once at container creation)
 ENV FIREHOL_LISTS_INIT firehol_level1 firehol_level2 firehol_level3
 
 # skip fullbogons because they include local IPs 192.168.x.x
-ENV SKIP_LISTS fullbogons
+ENV FIREHOL_LISTS_SKIP fullbogons
+
+# set file capabilites so container can be used by non-root user
+RUN for f in /usr/sbin/ipset /sbin/xtables-nft-multi /sbin/xtables-legacy-multi; do setcap cap_net_admin,cap_net_raw+eip "${f}"; done
+
+# needed so non-root user can create xtables lock file
+RUN chmod 777 /run
 
 ENTRYPOINT ["/sbin/tini", "--"]
 
