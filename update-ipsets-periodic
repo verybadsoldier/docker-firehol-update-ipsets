@@ -1,34 +1,23 @@
 #!/bin/bash
 
-# better to update the update-ipsets script to the newest version (IP list providers are updated daily basis)
-curl -L https://raw.githubusercontent.com/firehol/firehol/master/sbin/update-ipsets -o /sbin/update-ipsets && chmod a+x /sbin/update-ipsets
-
-# restore the latest ipsets
-if [ -e /etc/firehol/ipsets/ipset-names.latest ];
-then
-    ipset restore < /etc/firehol/ipsets/ipset-names.latest
-fi
-
-iptables -n --list FIREHOL_WHITELIST_MANUAL >/dev/null 2>&1
+# check if FIREHOL_BLACKLIST exists. Otherwise setup all chains
+"${IPTABLES_CMD}" -n --list FIREHOL_BLACKLIST >/dev/null 2>&1
 if [ $? == 1 ]; then
-  echo creating table FIREHOL_WHITELIST_MANUAL ...
-  iptables -N FIREHOL_WHITELIST_MANUAL
+  "${IPTABLES_CMD}" -N FIREHOL_BLACKLIST
+  "${IPTABLES_CMD}" -A INPUT -j FIREHOL_BLACKLIST
+  "${IPTABLES_CMD}" -A DOCKER-USER -j FIREHOL_BLACKLIST
 fi
 
-# update WHITELIST
-iptables -F FIREHOL_WHITELIST_MANUAL
-if [ ! -z "${WHITELIST_IPS}" ];
-then
-    echo Adding manual IPs to FIREHOL_WHITELIST_MANUAL
-    iptables -A FIREHOL_WHITELIST_MANUAL -s "${WHITELIST_IPS}" -j ACCEPT
-fi
-
-iptables -n --list FIREHOL_BLACKLIST >/dev/null 2>&1
-if [ $? == 1 ]; then
-  iptables -N FIREHOL_BLACKLIST
-
-  iptables -I INPUT -j FIREHOL_BLACKLIST
-  iptables -I DOCKER-USER -j FIREHOL_BLACKLIST
+# auto-enable lists defined in env
+INIT_LIST_FLAG_FILE="/etc/firehol/lists_init.done"
+if [ ! -f "${INIT_LIST_FLAG_FILE}" ]; then
+  echo "First Startup: Enabling initial lists defined by env variable FIREHOL_LISTS_INIT: ${FIREHOL_LISTS_INIT}"
+  for p in ${FIREHOL_LISTS_INIT}; do
+    /bin/enable "${p}"
+  done
+  touch /etc/firehol/lists_init.done
+else
+  echo "Initial lists not enabling because this isn't the first start. Not modifying current list configuration" 
 fi
 
 # add whitelist rule (delete first as it might exist already)
@@ -40,12 +29,13 @@ do
     i="${i##*/}"
     i="${i%.*}"
     ipset-apply $i
-    if [[ -z $(iptables -L FIREHOL_BLACKLIST | grep "match-set $i src") ]];
+    if [[ -z $("${IPTABLES_CMD}" -L FIREHOL_BLACKLIST | grep "match-set $i src") ]];
     then
-        iptables -I FIREHOL_BLACKLIST -m set --match-set $i src -j DROP
+        "${IPTABLES_CMD}" -I FIREHOL_BLACKLIST -m set --match-set $i src -j DROP
     fi
 done
 
+# we set up all chains and create ipset lists. So now we only have to update those ipset lists
 while :
 do
     update-ipsets -s
