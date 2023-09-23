@@ -47,7 +47,7 @@ RUN for f in /usr/sbin/ipset /sbin/xtables-nft-multi /sbin/xtables-legacy-multi;
 # needed so non-root user can create xtables lock file
 RUN chmod 777 /run
 
-RUN chown -R $USERNAME:$USERNAME /etc/firehol
+RUN chown -R $USERNAME:$USERNAME /etc/firehol && mkdir -p /home/firehol-update-ipsets/.update-ipsets && chown -R $USERNAME:$USERNAME /home/firehol-update-ipsets/.update-ipsets/
 
 
 USER $USERNAME
@@ -56,6 +56,9 @@ ADD enable /bin/enable
 ADD disable /bin/disable
 ADD update-ipsets-periodic /bin/update-ipsets-periodic
 ADD update-common.sh /bin
+
+# Add config file that configure firehol pathes as we were running as root
+ADD update-ipsets.conf /home/firehol-update-ipsets/.update-ipsets/update-ipsets.conf
 
 # choose which iptables command to use
 ENV IPTABLES_CMD iptables-legacy
@@ -66,8 +69,6 @@ ENV FIREHOL_LISTS_INIT firehol_level1 firehol_level2 firehol_level3
 
 # skip fullbogons because they include local IPs 192.168.x.x
 ENV FIREHOL_LISTS_SKIP fullbogons
-
-# ENTRYPOINT ["/sbin/tini", "--"]
 
 # create basic directory structure
 RUN update-ipsets -s

@@ -49,9 +49,14 @@ You can confirm the update by the following command.
 $ docker logs firehol-update-ipsets
 ```
 
+Notes:
+The container will not run as root user. A special non-root user with UID 6721 is embedded into the image. It is not possible to change it to a different user because it would mess up the file permissions.
+
 Written by
 ----------
 
 Yosuke Matsusaka <yosuke.matsusaka@gmail.com>
+
+tweaks by vbs <vbs@springrts.de>
 
 Distributed under MIT license.
