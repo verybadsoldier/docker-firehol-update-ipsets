@@ -52,6 +52,31 @@ $ docker logs firehol-update-ipsets
 Notes:
 The container will not run as root user. A special non-root user with UID 6721 is embedded into the image. It is not possible to change it to a different user because it would mess up the file permissions.
 
+Example docker-compose.yml:
+```
+version: '3'
+services:
+  firehol-update-ipsets:
+    container_name: firehol-update-ipsets
+    image: "ghcr.io/verybadsoldier/docker-firehol-update-ipsets:1.3.0"
+    environment:
+      - IPTABLES_CMD=iptables
+      - SKIP_LISTS=fullbogons greensnow
+      - FIREHOL_LISTS_INIT=firehol_level1 firehol_level2 firehol_level3 blocklist_de blocklist_net_ua botscout_30d blocklist_de bruteforceblocker
+    volumes:
+      - ./data:/etc/firehol/ipsets
+    network_mode: host
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+
+    restart: always
+```
+
+Make sure to give UID 6721 file permisssions to the `data` folder.
+
 Written by
 ----------
 
