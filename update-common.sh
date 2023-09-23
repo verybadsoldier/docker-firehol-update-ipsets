@@ -7,7 +7,7 @@ function should_skip {
     return 1
   fi
 
-  for i in $SKIP_LISTS; do
+  for i in $FIREHOL_LISTS_SKIP; do
     if [ "$i" == $listname ]; then
         return 1
     fi
