@@ -1,4 +1,4 @@
-FROM alpine:3.16.2
+FROM alpine:3.18.3
 
 ARG update-ipsets_commit=86b1729b37cf45250ef71b4c3fc2314a66de7d34
 
@@ -13,7 +13,7 @@ RUN addgroup -g $USER_GID $USERNAME \
 
 MAINTAINER Yosuke Matsusaka <yosuke.matsusaka@gmail.com>
 
-RUN apk add --no-cache tini bash ipset iproute2 curl unzip grep gawk lsof
+RUN apk add --no-cache tini bash ipset iproute2 curl unzip grep gawk lsof libcap
 
 ENV IPRANGE_VERSION 1.0.4
 
@@ -27,21 +27,19 @@ RUN apk add --no-cache --virtual .iprange_builddep autoconf automake make gcc mu
     rm -rf /tmp/iprange-$IPRANGE_VERSION && \
     apk del .iprange_builddep
 
-ENV FIREHOL_VERSION 3.1.7
+ENV FIREHOL_CHECKOUT eae10a45c358bf9a37a8528b03a0500b91db5e5b
 
 RUN apk add --no-cache --virtual .firehol_builddep autoconf automake make && \
-     curl -L https://github.com/firehol/firehol/releases/download/v$FIREHOL_VERSION/firehol-$FIREHOL_VERSION.tar.gz | tar zvx -C /tmp && \
-     cd /tmp/firehol-$FIREHOL_VERSION && \
-     ./autogen.sh && \
-     ./configure --prefix= --disable-doc --disable-man && \
-     make && \
-     make install && \
-     cp contrib/ipset-apply.sh /bin/ipset-apply && \
-     cd && \
-     rm -rf /tmp/firehol-$FIREHOL_VERSION && \
-     apk del .firehol_builddep && \
-     curl -L https://raw.githubusercontent.com/firehol/firehol/86b1729b37cf45250ef71b4c3fc2314a66de7d34/sbin/update-ipsets -o /sbin/update-ipsets && \
-     chmod a+x /sbin/update-ipsets
+	wget https://github.com/firehol/firehol/archive/${FIREHOL_CHECKOUT}.zip -O /tmp/firehol.zip && unzip /tmp/firehol.zip -d /tmp && \
+    cd /tmp/firehol-${FIREHOL_CHECKOUT} && ls -la && \
+    ./autogen.sh && \
+    ./configure --prefix= --disable-doc --disable-man && \
+    make && \
+    make install && \
+    cp contrib/ipset-apply.sh /bin/ipset-apply && \
+    cd && \
+    rm -rf /tmp/firehol.zip && rm -rf /tmp/firehol-${FIREHOL_CHECKOUT} && \
+    apk del .firehol_builddep
 
 # set file capabilities so container can be used by non-root user
 RUN for f in /usr/sbin/ipset /sbin/xtables-nft-multi /sbin/xtables-legacy-multi; do setcap cap_net_admin,cap_net_raw+eip "${f}"; done
@@ -59,7 +57,7 @@ ADD disable /bin/disable
 ADD update-ipsets-periodic /bin/update-ipsets-periodic
 ADD update-common.sh /bin
 
-# choose iptables to use
+# choose which iptables command to use
 ENV IPTABLES_CMD iptables-legacy
 # ENV IPTABLES_CMD iptables-nft
 
@@ -71,7 +69,7 @@ ENV FIREHOL_LISTS_SKIP fullbogons
 
 # ENTRYPOINT ["/sbin/tini", "--"]
 
-RUN ls -la /etc/firehol
+# create basic directory structure
+RUN update-ipsets -s
 
 CMD ["/bin/update-ipsets-periodic"]
-#CMD ["/bin/sh"]
