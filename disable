@@ -1,6 +1,8 @@
 #!/bin/bash
 
+# remove the entry from iptables and then from ipset
 iptables -D FIREHOL_BLACKLIST -m set --match-set $1 src -j DROP
+ipset destroy $1
 
 # delete the actual FireHOL activation - TODO: currently dependend lists will remain active!
 rm /etc/firehol/ipsets/$1.source
