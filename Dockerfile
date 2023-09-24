@@ -71,7 +71,7 @@ ENV IPTABLES_CMD iptables-legacy
 # ENV IPTABLES_CMD iptables-nft
 
 # a robust default set of lists (will only be enabled once at container creation)
-ENV FIREHOL_LISTS_INIT firehol_level1 firehol_level2 firehol_level3
+ENV FIREHOL_LISTS_INIT firehol_level1 firehol_level2
 
 # skip fullbogons because they include local IPs 192.168.x.x
 ENV FIREHOL_LISTS_SKIP fullbogons

@@ -62,7 +62,7 @@ services:
     environment:
       - IPTABLES_CMD=iptables
       - SKIP_LISTS=fullbogons greensnow
-      - FIREHOL_LISTS_INIT=firehol_level1 firehol_level2 firehol_level3 blocklist_de blocklist_net_ua botscout_30d blocklist_de bruteforceblocker
+      - FIREHOL_LISTS_INIT=firehol_level1 firehol_level2 blocklist_de blocklist_net_ua botscout_30d blocklist_de bruteforceblocker
     volumes:
       - ./data:/etc/firehol/ipsets
     network_mode: host
