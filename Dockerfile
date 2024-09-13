@@ -11,11 +11,9 @@ RUN addgroup -g $USER_GID $USERNAME \
     && adduser -u $USER_UID --disabled-password --uid $USER_UID -G $USERNAME --ingroup $USERNAME $USERNAME
 
 
-MAINTAINER Yosuke Matsusaka <yosuke.matsusaka@gmail.com>
-
 RUN apk add --no-cache tini bash ipset iproute2 curl unzip grep gawk lsof libcap
 
-ENV IPRANGE_VERSION 1.0.4
+ENV IPRANGE_VERSION=1.0.4
 
 RUN apk add --no-cache --virtual .iprange_builddep autoconf automake make gcc musl-dev && \
     curl -L https://github.com/firehol/iprange/releases/download/v$IPRANGE_VERSION/iprange-$IPRANGE_VERSION.tar.gz | tar zvx -C /tmp && \
@@ -27,7 +25,7 @@ RUN apk add --no-cache --virtual .iprange_builddep autoconf automake make gcc mu
     rm -rf /tmp/iprange-$IPRANGE_VERSION && \
     apk del .iprange_builddep
 
-ENV FIREHOL_CHECKOUT eae10a45c358bf9a37a8528b03a0500b91db5e5b
+ENV FIREHOL_CHECKOUT=eae10a45c358bf9a37a8528b03a0500b91db5e5b
 
 RUN apk add --no-cache --virtual .firehol_builddep autoconf automake make && \
 	wget https://github.com/firehol/firehol/archive/${FIREHOL_CHECKOUT}.zip -O /tmp/firehol.zip && unzip /tmp/firehol.zip -d /tmp && \
@@ -67,14 +65,14 @@ ADD update-common.sh /bin
 ADD update-ipsets.conf /home/firehol-update-ipsets/.update-ipsets/update-ipsets.conf
 
 # choose which iptables command to use
-ENV IPTABLES_CMD iptables-legacy
-# ENV IPTABLES_CMD iptables-nft
+ENV IPTABLES_CMD=iptables-legacy
+# ENV IPTABLES_CMD=iptables-nft
 
 # a robust default set of lists (will only be enabled once at container creation)
-ENV FIREHOL_LISTS_INIT firehol_level1 firehol_level2
+ENV FIREHOL_LISTS_INIT="firehol_level1 firehol_level2"
 
 # skip fullbogons because they include local IPs 192.168.x.x
-ENV FIREHOL_LISTS_SKIP fullbogons
+ENV FIREHOL_LISTS_SKIP=fullbogons
 
 # create basic directory structure
 RUN update-ipsets -s
