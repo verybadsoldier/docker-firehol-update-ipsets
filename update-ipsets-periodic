@@ -1,18 +1,13 @@
 #!/bin/bash
 
 # check if FIREHOL_BLACKLIST exists. Otherwise setup all chains
-"${IPTABLES_CMD}" -n --list FIREHOL_BLACKLIST >/dev/null 2>&1
-if [ $? == 1 ]; then
-  "${IPTABLES_CMD}" -N FIREHOL_BLACKLIST
-  "${IPTABLES_CMD}" -A INPUT -j FIREHOL_BLACKLIST
-  "${IPTABLES_CMD}" -A DOCKER-USER -j FIREHOL_BLACKLIST
-fi
+"${IPTABLES_CMD}" -N FIREHOL_BLACKLIST  >/dev/null 2>&1 || true
 
-"${IPTABLES_CMD}" -n --list FIREHOL_WHITELIST_MANUAL >/dev/null 2>&1
-if [ $? == 1 ]; then
-  echo creating table FIREHOL_WHITELIST_MANUAL ...
-  "${IPTABLES_CMD}" -N FIREHOL_WHITELIST_MANUAL
-fi
+# delete rule if exists and setup freshly (make sure to add to front - not AFTER RETURN AT THE END)
+"${IPTABLES_CMD}" -D DOCKER-USER -p all -j FIREHOL_BLACKLIST >/dev/null 2>&1 || true
+"${IPTABLES_CMD}" -I DOCKER-USER -j FIREHOL_BLACKLIST
+
+"${IPTABLES_CMD}" -N FIREHOL_WHITELIST_MANUAL  >/dev/null 2>&1 || true
 
 # fill WHITELIST (flush and fill)
 "${IPTABLES_CMD}" -F FIREHOL_WHITELIST_MANUAL
@@ -21,6 +16,7 @@ then
     echo Adding manual IPs to FIREHOL_WHITELIST_MANUAL
     "${IPTABLES_CMD}" -A FIREHOL_WHITELIST_MANUAL -s "${WHITELIST_IPS}" -j ACCEPT
 fi
+"${IPTABLES_CMD}" -A FIREHOL_WHITELIST_MANUAL -j RETURN
 
 # auto-enable lists defined in env
 INIT_LIST_FLAG_FILE="/etc/firehol/lists_init.done"
@@ -35,7 +31,8 @@ else
 fi
 
 # add whitelist rule (delete first as it might exist already)
-"${IPTABLES_CMD}" -D FIREHOL_BLACKLIST -j FIREHOL_WHITELIST_MANUAL
+"${IPTABLES_CMD}" -D FIREHOL_BLACKLIST -j FIREHOL_WHITELIST_MANUAL >/dev/null 2>&1 || true
+
 "${IPTABLES_CMD}" -I FIREHOL_BLACKLIST -j FIREHOL_WHITELIST_MANUAL
 
 for i in $(find /etc/firehol/ipsets -maxdepth 1 -name "*.enabled");
