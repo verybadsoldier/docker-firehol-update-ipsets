@@ -1,11 +1,15 @@
 #!/bin/bash
 
+readonly FIREHOL_CHAIN=FIREHOL_BLACKLIST
+
 # check if FIREHOL_BLACKLIST exists. Otherwise setup all chains
-"${IPTABLES_CMD}" -N FIREHOL_BLACKLIST  >/dev/null 2>&1 || true
+"${IPTABLES_CMD}" -N "${FIREHOL_CHAIN}"  >/dev/null 2>&1 || true
 
 # delete rule if exists and setup freshly (make sure to add to front - not AFTER RETURN AT THE END)
-"${IPTABLES_CMD}" -D DOCKER-USER -p all -j FIREHOL_BLACKLIST >/dev/null 2>&1 || true
-"${IPTABLES_CMD}" -I DOCKER-USER -j FIREHOL_BLACKLIST
+for chain in INPUT DOCKER-USER; do
+    "${IPTABLES_CMD}" -D "${chain}" -p all -j "${FIREHOL_CHAIN}" >/dev/null 2>&1 || true
+    "${IPTABLES_CMD}" -I "${chain}" -j "${FIREHOL_CHAIN}"
+done
 
 "${IPTABLES_CMD}" -N FIREHOL_WHITELIST_MANUAL  >/dev/null 2>&1 || true
 
@@ -31,18 +35,18 @@ else
 fi
 
 # add whitelist rule (delete first as it might exist already)
-"${IPTABLES_CMD}" -D FIREHOL_BLACKLIST -j FIREHOL_WHITELIST_MANUAL >/dev/null 2>&1 || true
+"${IPTABLES_CMD}" -D "${FIREHOL_CHAIN}" -j FIREHOL_WHITELIST_MANUAL >/dev/null 2>&1 || true
 
-"${IPTABLES_CMD}" -I FIREHOL_BLACKLIST -j FIREHOL_WHITELIST_MANUAL
+"${IPTABLES_CMD}" -I "${FIREHOL_CHAIN}" -j FIREHOL_WHITELIST_MANUAL
 
 for i in $(find /etc/firehol/ipsets -maxdepth 1 -name "*.enabled");
 do
     i="${i##*/}"
     i="${i%.*}"
     ipset-apply $i
-    if [[ -z $("${IPTABLES_CMD}" -L FIREHOL_BLACKLIST | grep "match-set $i src") ]];
+    if [[ -z $("${IPTABLES_CMD}" -L "${FIREHOL_CHAIN}" | grep "match-set $i src") ]];
     then
-        "${IPTABLES_CMD}" -I FIREHOL_BLACKLIST -m set --match-set $i src -j DROP
+        "${IPTABLES_CMD}" -I "${FIREHOL_CHAIN}" -m set --match-set $i src -j DROP
     fi
 done
 
