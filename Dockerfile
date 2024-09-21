@@ -1,10 +1,11 @@
 FROM alpine:3.18.3
 
-ARG update-ipsets_commit=86b1729b37cf45250ef71b4c3fc2314a66de7d34
-
 ARG USERNAME=firehol-update-ipsets
 ARG USER_UID=6721
 ARG USER_GID=$USER_UID
+
+ARG FIREHOL_CHECKOUT=fe8e4ca95b7b37e6ef2d662d4e2d31df212d1193
+ARG IPRANGE_VERSION=1.0.4
 
 # Create the user
 RUN addgroup -g $USER_GID $USERNAME \
@@ -13,7 +14,6 @@ RUN addgroup -g $USER_GID $USERNAME \
 
 RUN apk add --no-cache tini bash ipset iproute2 curl unzip grep gawk lsof libcap
 
-ENV IPRANGE_VERSION=1.0.4
 
 RUN apk add --no-cache --virtual .iprange_builddep autoconf automake make gcc musl-dev && \
     curl -L https://github.com/firehol/iprange/releases/download/v$IPRANGE_VERSION/iprange-$IPRANGE_VERSION.tar.gz | tar zvx -C /tmp && \
@@ -25,10 +25,8 @@ RUN apk add --no-cache --virtual .iprange_builddep autoconf automake make gcc mu
     rm -rf /tmp/iprange-$IPRANGE_VERSION && \
     apk del .iprange_builddep
 
-ENV FIREHOL_CHECKOUT=eae10a45c358bf9a37a8528b03a0500b91db5e5b
-
 RUN apk add --no-cache --virtual .firehol_builddep autoconf automake make && \
-	wget https://github.com/firehol/firehol/archive/${FIREHOL_CHECKOUT}.zip -O /tmp/firehol.zip && unzip /tmp/firehol.zip -d /tmp && \
+    wget https://github.com/firehol/firehol/archive/${FIREHOL_CHECKOUT}.zip -O /tmp/firehol.zip && unzip /tmp/firehol.zip -d /tmp && \
     cd /tmp/firehol-${FIREHOL_CHECKOUT} && ls -la && \
     ./autogen.sh && \
     ./configure --prefix= --disable-doc --disable-man && \
