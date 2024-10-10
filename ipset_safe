@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# Wrapper script around ipset that has a retry mechanism in case of errors to fix race conditions
+
+# original ipset command to call
+if [ -z "${IPSET_CMD_DISTRO}" ]; then
+  echo >&2 "Fatal: environment variable IPSET_CMD_DISTRO not set"
+  exit 1
+fi
+
+if [ -z "${NUM_RETRIES}" ]; then
+  NUM_RETRIES=10
+fi
+
+readonly NUM_RETRIES
+readonly RETRY_PAUSE=1
+readonly IPSET_CMD=ipset
+
+for i in $(seq ${NUM_RETRIES}); do
+    echo try $i
+	("${IPSET_CMD_DISTRO}" $@) && exit  0
+	sleep ${RETRY_PAUSE}
+done
+
+echo >&2 "Failed ${NUM_RETRIES}: $IPSET_CMD"
+
+exit 1

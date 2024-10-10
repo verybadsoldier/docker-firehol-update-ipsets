@@ -4,7 +4,7 @@ ARG USERNAME=firehol-update-ipsets
 ARG USER_UID=6721
 ARG USER_GID=$USER_UID
 
-ARG FIREHOL_CHECKOUT=fe8e4ca95b7b37e6ef2d662d4e2d31df212d1193
+ARG FIREHOL_CHECKOUT=37cc34ea27ba6dcb6f91c25a2d94c86a3170b6ff
 ARG IPRANGE_VERSION=1.0.4
 
 # Create the user
@@ -45,6 +45,12 @@ RUN chmod 777 /run
 
 RUN chown -R $USERNAME:$USERNAME /etc/firehol && mkdir -p /home/firehol-update-ipsets/.update-ipsets && chown -R $USERNAME:$USERNAME /home/firehol-update-ipsets/.update-ipsets/
 
+# replace original ipset with the ipset retry wrapper
+ENV IPSET_CMD_DISTRO=/usr/sbin/ipset.distro
+RUN mv /usr/sbin/ipset "${IPSET_CMD_DISTRO}"
+COPY ipset_safe /usr/sbin/ipset
+
+
 # it is hardcoded in update-ipsets to not actually update kernel table when not running as root
 # as we can do update tables as non-root, we patch the internal variables here
 #RUN sed -i.bak 's/IPSETS_APPLY=0/IPSETS_APPLY=1/' /libexec/firehol/3.1.8_master/update-ipsets
@@ -73,6 +79,6 @@ ENV FIREHOL_LISTS_INIT="firehol_level1 firehol_level2"
 ENV FIREHOL_LISTS_SKIP=fullbogons
 
 # create basic directory structure
-RUN update-ipsets -s
+RUN bash -c "NUM_RETRIES=1 update-ipsets -s"
 
 CMD ["/bin/update-ipsets-periodic"]
