@@ -46,12 +46,6 @@ RUN chmod 777 /run
 
 RUN chown -R $USERNAME:$USERNAME /etc/firehol && mkdir -p /home/firehol-update-ipsets/.update-ipsets && chown -R $USERNAME:$USERNAME /home/firehol-update-ipsets/.update-ipsets/
 
-# replace original ipset with the ipset retry wrapper
-ENV IPSET_CMD_DISTRO=/usr/sbin/ipset.distro
-RUN mv /usr/sbin/ipset "${IPSET_CMD_DISTRO}"
-COPY ipset_safe /usr/sbin/ipset
-
-
 # it is hardcoded in update-ipsets to not actually update kernel table when not running as root
 # as we can do update tables as non-root, we patch the internal variables here
 #RUN sed -i.bak 's/IPSETS_APPLY=0/IPSETS_APPLY=1/' /libexec/firehol/3.1.8_master/update-ipsets
