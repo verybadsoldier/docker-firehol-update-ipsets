@@ -37,7 +37,7 @@ fi
 # add whitelist rule (delete first as it might exist already)
 "${IPTABLES_CMD}" -D "${FIREHOL_CHAIN}" -j FIREHOL_WHITELIST_MANUAL >/dev/null 2>&1 || true
 
-"${IPTABLES_CMD}" -I "${FIREHOL_CHAIN}" -j FIREHOL_WHITELIST_MANUAL
+"${IPTABLES_CMD}" -I "${FIREHOL_CHAIN}" -j FIREHOL_WHITELIST_MANUAL -m comment --comment "FireHOL Whitelist"
 
 for i in $(find /etc/firehol/ipsets -maxdepth 1 -name "*.enabled");
 do
