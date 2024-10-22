@@ -4,8 +4,9 @@ ARG USERNAME=firehol-update-ipsets
 ARG USER_UID=6721
 ARG USER_GID=$USER_UID
 
-ARG FIREHOL_CHECKOUT=37cc34ea27ba6dcb6f91c25a2d94c86a3170b6ff
+ARG FIREHOL_CHECKOUT=f60e33ab3ff708daf3e98f78ace270e86f7bf4c9
 ARG IPRANGE_VERSION=1.0.4
+ARG FIREHOL_URL=https://github.com/firehol/firehol/archive/${FIREHOL_CHECKOUT}.zip
 
 # Create the user
 RUN addgroup -g $USER_GID $USERNAME \
@@ -26,7 +27,7 @@ RUN apk add --no-cache --virtual .iprange_builddep autoconf automake make gcc mu
     apk del .iprange_builddep
 
 RUN apk add --no-cache --virtual .firehol_builddep autoconf automake make && \
-    wget https://github.com/firehol/firehol/archive/${FIREHOL_CHECKOUT}.zip -O /tmp/firehol.zip && unzip /tmp/firehol.zip -d /tmp && \
+    wget "${FIREHOL_URL}" -O /tmp/firehol.zip && unzip /tmp/firehol.zip -d /tmp && \
     cd /tmp/firehol-${FIREHOL_CHECKOUT} && ls -la && \
     ./autogen.sh && \
     ./configure --prefix= --disable-doc --disable-man && \
@@ -79,6 +80,6 @@ ENV FIREHOL_LISTS_INIT="firehol_level1 firehol_level2"
 ENV FIREHOL_LISTS_SKIP=fullbogons
 
 # create basic directory structure
-RUN bash -c "NUM_RETRIES=1 update-ipsets -s"
+RUN bash -c "IPSET_NUM_RETRIES=1 update-ipsets -s"
 
 CMD ["/bin/update-ipsets-periodic"]

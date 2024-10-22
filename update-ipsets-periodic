@@ -46,7 +46,7 @@ do
     ipset-apply $i
     if [[ -z $("${IPTABLES_CMD}" -L "${FIREHOL_CHAIN}" | grep "match-set $i src") ]];
     then
-        "${IPTABLES_CMD}" -I "${FIREHOL_CHAIN}" -m set --match-set $i src -j DROP
+        "${IPTABLES_CMD}" -I "${FIREHOL_CHAIN}" -m set --match-set $i src -j DROP -m comment --comment "FireHOL: ${i}"
     fi
 done
 
