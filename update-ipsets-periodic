@@ -1,5 +1,7 @@
 #!/bin/bash
 
+source /bin/update-common.sh
+
 readonly FIREHOL_CHAIN=FIREHOL_BLACKLIST
 
 # check if FIREHOL_BLACKLIST exists. Otherwise setup all chains
@@ -29,25 +31,26 @@ if [ ! -f "${INIT_LIST_FLAG_FILE}" ]; then
   for p in ${FIREHOL_LISTS_INIT}; do
     /bin/enable "${p}"
   done
-  touch /etc/firehol/lists_init.done
+  touch "${INIT_LIST_FLAG_FILE}"
 else
   echo "Initial lists not enabling because this isn't the first start. Not modifying current list configuration" 
 fi
 
 # add whitelist rule (delete first as it might exist already)
-"${IPTABLES_CMD}" -D "${FIREHOL_CHAIN}" -j FIREHOL_WHITELIST_MANUAL >/dev/null 2>&1 || true
+"${IPTABLES_CMD}" -D "${FIREHOL_CHAIN}" -j FIREHOL_WHITELIST_MANUAL -m comment --comment "FireHOL Whitelist" >/dev/null 2>&1 || true
 
 "${IPTABLES_CMD}" -I "${FIREHOL_CHAIN}" -j FIREHOL_WHITELIST_MANUAL -m comment --comment "FireHOL Whitelist"
 
+
+# rules are added to the chain in script "enable" also. We do it here again in the case the container is stoppped
+# and restarted later when someone delete rules from the chain. We just make sure here they are added again
 for i in $(find /etc/firehol/ipsets -maxdepth 1 -name "*.enabled");
 do
     i="${i##*/}"
     i="${i%.*}"
     ipset-apply $i
-    if [[ -z $("${IPTABLES_CMD}" -L "${FIREHOL_CHAIN}" | grep "match-set $i src") ]];
-    then
-        "${IPTABLES_CMD}" -I "${FIREHOL_CHAIN}" -m set --match-set $i src -j DROP -m comment --comment "FireHOL: ${i}"
-    fi
+
+    add_rule_for_set $i
 done
 
 # we set up all chains and create ipset lists. So now we only have to update those ipset lists
