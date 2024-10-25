@@ -33,13 +33,13 @@ if [ ! -f "${INIT_LIST_FLAG_FILE}" ]; then
   done
   touch "${INIT_LIST_FLAG_FILE}"
 else
-  echo "Initial lists not enabling because this isn't the first start. Not modifying current list configuration" 
+  echo "Initial lists not enabling because this isn't the first start. Not modifying current list configuration"
 fi
 
 # add whitelist rule (delete first as it might exist already)
-"${IPTABLES_CMD}" -D "${FIREHOL_CHAIN}" -j FIREHOL_WHITELIST_MANUAL -m comment --comment "FireHOL Whitelist" >/dev/null 2>&1 || true
+"${IPTABLES_CMD}" -D "${FIREHOL_CHAIN}" -j FIREHOL_WHITELIST_MANUAL >/dev/null 2>&1 || true
 
-"${IPTABLES_CMD}" -I "${FIREHOL_CHAIN}" -j FIREHOL_WHITELIST_MANUAL -m comment --comment "FireHOL Whitelist"
+"${IPTABLES_CMD}" -I "${FIREHOL_CHAIN}" -j FIREHOL_WHITELIST_MANUAL
 
 
 # rules are added to the chain in script "enable" also. We do it here again in the case the container is stoppped
