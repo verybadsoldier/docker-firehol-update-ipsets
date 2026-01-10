@@ -1,61 +1,179 @@
 #!/bin/bash
 
-source /bin/update-common.sh
+# =============================================================================
+# MINION FIREWALL SETUP - FINAL VERSION (IPv4)
+# Logic: Stateful Inspection + TCP-SYN Geo Gatekeeper + FireHOL Blacklists
+# =============================================================================
 
 readonly FIREHOL_CHAIN=FIREHOL_BLACKLIST
+readonly IPTABLES_CMD=${IPTABLES_CMD:-iptables}
 
-# check if FIREHOL_BLACKLIST exists. Otherwise setup all chains
+# --- CONFIGURATION ---
+# 1. Trusted Bypass: IPs that bypass all checks (e.g., your laptop on LAN)
+readonly CHAIN_TRUSTED="TRUSTED_BYPASS"
+# 2. Geo Scope: The name of the IPSet list
+readonly IPSET_GEO="geo_scope"
+# Path to the helper script that downloads the country IPs
+readonly COUNTRY_UPDATE_SCRIPT="/bin/update-countries.sh"
+
+# Check if Geo Scope should be enabled.
+# Supports GEO_SCOPE_COUNTRIES or WHITELIST_COUNTRIES (legacy).
+COUNTRIES_VAR="${GEO_SCOPE_COUNTRIES:-${WHITELIST_COUNTRIES:-}}"
+
+if [ -z "${COUNTRIES_VAR}" ]; then
+    echo "CONFIGURATION: No countries defined. Geo Scoping is DISABLED."
+    GEO_ENABLED="false"
+else
+    echo "CONFIGURATION: Countries detected (${COUNTRIES_VAR}). Geo Scoping is ENABLED."
+    GEO_ENABLED="true"
+fi
+
+# -----------------------------------------------------------------------------
+# 1. Initialize Chains
+# -----------------------------------------------------------------------------
+# Create the chain. If it exists, this fails silently (which is fine).
 "${IPTABLES_CMD}" -N "${FIREHOL_CHAIN}"  >/dev/null 2>&1 || true
 
-# delete rule if exists and setup freshly (make sure to add to front - not AFTER RETURN AT THE END)
+# CRITICAL FIX: Flush the chain to remove any existing "garbage" or old rules.
+# This ensures we start with a completely empty container.
+"${IPTABLES_CMD}" -F "${FIREHOL_CHAIN}"
+
+
+# Hook into INPUT and DOCKER-USER
+# Remove old references and re-insert to ensure our chain is always processed
 for chain in INPUT DOCKER-USER; do
     "${IPTABLES_CMD}" -D "${chain}" -p all -j "${FIREHOL_CHAIN}" >/dev/null 2>&1 || true
     "${IPTABLES_CMD}" -I "${chain}" -j "${FIREHOL_CHAIN}"
 done
 
-"${IPTABLES_CMD}" -N FIREHOL_WHITELIST_MANUAL  >/dev/null 2>&1 || true
+# -----------------------------------------------------------------------------
+# 1.5 GLOBAL STATE BYPASS (Performance & Return Traffic)
+# -----------------------------------------------------------------------------
+# Rule #1: Immediately accept known connections.
+# Saves CPU (no need to check lists) and allows server replies.
+"${IPTABLES_CMD}" -D "${FIREHOL_CHAIN}" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT >/dev/null 2>&1 || true
+"${IPTABLES_CMD}" -I "${FIREHOL_CHAIN}" 1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
-# fill WHITELIST (flush and fill)
-"${IPTABLES_CMD}" -F FIREHOL_WHITELIST_MANUAL
-if [ ! -z "${WHITELIST_IPS}" ];
-then
-    echo Adding manual IPs to FIREHOL_WHITELIST_MANUAL
-    "${IPTABLES_CMD}" -A FIREHOL_WHITELIST_MANUAL -s "${WHITELIST_IPS}" -j ACCEPT
+# -----------------------------------------------------------------------------
+# 2. Setup TRUSTED_BYPASS (Manual Whitelist & LAN)
+# -----------------------------------------------------------------------------
+"${IPTABLES_CMD}" -N "${CHAIN_TRUSTED}"  >/dev/null 2>&1 || true
+"${IPTABLES_CMD}" -F "${CHAIN_TRUSTED}"
+
+echo "Adding Private LAN & Localhost to ${CHAIN_TRUSTED}..."
+
+# CRITICAL FOR FHEM: Allow Localhost (Loopback)
+# This fixes the "BlockingKill" / Timeout errors where internal processes
+# cannot talk back to the main application via TCP.
+"${IPTABLES_CMD}" -A "${CHAIN_TRUSTED}" -s 127.0.0.0/8 -j ACCEPT
+
+# Allow standard private networks (RFC1918)
+# This prevents you from locking yourself out on the local network
+"${IPTABLES_CMD}" -A "${CHAIN_TRUSTED}" -s 10.0.0.0/8 -j ACCEPT 
+"${IPTABLES_CMD}" -A "${CHAIN_TRUSTED}" -s 172.16.0.0/12 -j ACCEPT
+"${IPTABLES_CMD}" -A "${CHAIN_TRUSTED}" -s 192.168.0.0/16 -j ACCEPT
+
+if [ ! -z "${WHITELIST_IPS}" ]; then
+    echo "Adding extra trusted IPs to ${CHAIN_TRUSTED}..."
+    "${IPTABLES_CMD}" -A "${CHAIN_TRUSTED}" -s "${WHITELIST_IPS}" -j ACCEPT
 fi
-"${IPTABLES_CMD}" -A FIREHOL_WHITELIST_MANUAL -j RETURN
+"${IPTABLES_CMD}" -A "${CHAIN_TRUSTED}" -j RETURN
 
-# auto-enable lists defined in env
+# -----------------------------------------------------------------------------
+# 3. Initialize Lists
+# -----------------------------------------------------------------------------
+# A. FireHOL Lists (via Env Variable)
 INIT_LIST_FLAG_FILE="/etc/firehol/lists_init.done"
 if [ ! -f "${INIT_LIST_FLAG_FILE}" ]; then
-  echo "First Startup: Enabling initial lists defined by env variable FIREHOL_LISTS_INIT: ${FIREHOL_LISTS_INIT}"
+  echo "First Startup: Enabling initial lists: ${FIREHOL_LISTS_INIT}"
   for p in ${FIREHOL_LISTS_INIT}; do
     /bin/enable "${p}"
   done
-  touch "${INIT_LIST_FLAG_FILE}"
-else
-  echo "Initial lists not enabling because this isn't the first start. Not modifying current list configuration"
+  touch /etc/firehol/lists_init.done
 fi
 
-# add whitelist rule (delete first as it might exist already)
-"${IPTABLES_CMD}" -D "${FIREHOL_CHAIN}" -j FIREHOL_WHITELIST_MANUAL >/dev/null 2>&1 || true
+# B. Geo Scope List (Only load if enabled)
+if [ "$GEO_ENABLED" == "true" ]; then
+    if [ -f "$COUNTRY_UPDATE_SCRIPT" ]; then
+        echo "Initializing Geo Scope ($IPSET_GEO)..."
+        # Pass the list name via env var to the update script
+        GEO_IPSET_NAME="$IPSET_GEO" bash "$COUNTRY_UPDATE_SCRIPT"
+    else
+        echo "WARNING: $COUNTRY_UPDATE_SCRIPT not found. Geo Filter will fail!"
+    fi
+fi
 
-"${IPTABLES_CMD}" -I "${FIREHOL_CHAIN}" -j FIREHOL_WHITELIST_MANUAL
 
+# -----------------------------------------------------------------------------
+# 4. Rule Construction (Reverse Order Insertion)
+# -----------------------------------------------------------------------------
+# We use -I (Insert at Top). Therefore, we build the stack from BOTTOM to TOP.
+# TARGET ORDER:
+# 1. ESTABLISHED,RELATED (Top)
+# 2. TRUSTED_BYPASS      (Trusted IPs, LAN, Localhost)
+# 3. GEO_SCOPE           (Blocks foreign TCP-SYNs)
+# 4. BLACKLISTS          (Blocks known bad IPs)
 
-# rules are added to the chain in script "enable" also. We do it here again in the case the container is stoppped
-# and restarted later when someone delete rules from the chain. We just make sure here they are added again
-for i in $(find /etc/firehol/ipsets -maxdepth 1 -name "*.enabled");
-do
+# --- Step A: Blacklists (Ends up at the bottom) ---
+for i in $(find /etc/firehol/ipsets -maxdepth 1 -name "*.enabled"); do
     i="${i##*/}"
     i="${i%.*}"
     ipset-apply $i
-
-    add_rule_for_set $i
+    if [[ -z $("${IPTABLES_CMD}" -L "${FIREHOL_CHAIN}" | grep "match-set $i src") ]]; then
+        "${IPTABLES_CMD}" -I "${FIREHOL_CHAIN}" -m set --match-set $i src -j DROP
+    fi
 done
 
-# we set up all chains and create ipset lists. So now we only have to update those ipset lists
+# --- Step B: GEO_SCOPE (Middle) ---
+# Cleanup: Always remove old rules first (whether TCP-specific or generic)
+"${IPTABLES_CMD}" -D "${FIREHOL_CHAIN}" -m set ! --match-set "${IPSET_GEO}" src -j DROP >/dev/null 2>&1 || true
+"${IPTABLES_CMD}" -D "${FIREHOL_CHAIN}" -p tcp --syn -m set ! --match-set "${IPSET_GEO}" src -j DROP >/dev/null 2>&1 || true
+
+if [ "$GEO_ENABLED" == "true" ]; then
+    # Enable: Only insert if IPSet exists
+    if ipset list -n | grep -q "^${IPSET_GEO}$"; then
+        echo "Inserting Geo Scope Rule (TCP SYN Only)"
+        # IMPORTANT: Only check TCP SYN packets!
+        # Leaves Ping (ICMP) and DNS (UDP) alone, but blocks SSH/HTTP connects.
+        "${IPTABLES_CMD}" -I "${FIREHOL_CHAIN}" -p tcp --syn -m set ! --match-set "${IPSET_GEO}" src -j DROP
+    else
+        echo "ERROR: IPSet $IPSET_GEO missing. Skipping rule."
+    fi
+else
+    # Disable: Free up resources
+    echo "Geo Scoping is DISABLED. Cleaning up..."
+    ipset destroy "${IPSET_GEO}" >/dev/null 2>&1 || true
+fi
+
+# --- Step C: TRUSTED_BYPASS (Top) ---
+"${IPTABLES_CMD}" -D "${FIREHOL_CHAIN}" -j "${CHAIN_TRUSTED}" >/dev/null 2>&1 || true
+echo "Inserting Trusted Bypass Rule"
+"${IPTABLES_CMD}" -I "${FIREHOL_CHAIN}" 1 -j "${CHAIN_TRUSTED}"
+
+# --- Step D: State Rule (Force Absolute Top) ---
+"${IPTABLES_CMD}" -D "${FIREHOL_CHAIN}" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT >/dev/null 2>&1 || true
+"${IPTABLES_CMD}" -I "${FIREHOL_CHAIN}" 1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+
+# -----------------------------------------------------------------------------
+# 5. Maintenance Loop
+# -----------------------------------------------------------------------------
+echo "Firewall Setup complete. Starting maintenance loop."
+
+LOOP_COUNT=0
+
 while :
 do
+    # Update FireHOL Blacklists
     update-ipsets -s
-    sleep $((($RANDOM % 20 + 50) * 10)) # sleeps for about 10 minutes (add random variable to avoid DDoS to iplist provider)
+
+    ((LOOP_COUNT++))
+    # Update Geo list only if enabled, approx every 60 mins (every 6th loop)
+    if [ "$GEO_ENABLED" == "true" ] && [ $((LOOP_COUNT % 6)) -eq 0 ]; then
+        echo "Updating Geo Scope list..."
+        GEO_IPSET_NAME="$IPSET_GEO" bash "$COUNTRY_UPDATE_SCRIPT"
+    fi
+
+    # Sleep approx 10 minutes with random jitter
+    sleep $((($RANDOM % 20 + 50) * 10)) 
 done

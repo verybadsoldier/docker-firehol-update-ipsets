@@ -58,6 +58,7 @@ USER $USERNAME
 ADD enable /bin/enable
 ADD disable /bin/disable
 ADD update-ipsets-periodic /bin/update-ipsets-periodic
+ADD update-countries.sh /bin/update-countries.sh
 ADD update-common.sh /bin
 
 # Add config file that configure firehol pathes as we were running as root
