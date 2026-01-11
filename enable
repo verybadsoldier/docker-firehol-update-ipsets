@@ -31,6 +31,7 @@ do
             fi
             has_dep=true
             wait
+            echo "Enabling set $f which depends on $1"
             update-ipsets enable $f 2>&1
             sf=`echo $f | sed -E 's/_[0-9]+d//g'`
             if [ $f != $sf ];

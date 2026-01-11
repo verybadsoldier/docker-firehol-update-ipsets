@@ -13,9 +13,10 @@ RUN addgroup -g $USER_GID $USERNAME \
     && adduser -u $USER_UID --disabled-password --uid $USER_UID -G $USERNAME --ingroup $USERNAME $USERNAME
 
 
-RUN apk add --no-cache tini bash ipset iproute2 curl unzip grep gawk lsof libcap
+RUN apk add --no-cache tini bash ipset ip6tables iproute2 curl unzip grep gawk lsof libcap
 
 
+# Build and install iprange
 RUN apk add --no-cache --virtual .iprange_builddep autoconf automake make gcc musl-dev && \
     curl -L https://github.com/firehol/iprange/releases/download/v$IPRANGE_VERSION/iprange-$IPRANGE_VERSION.tar.gz | tar zvx -C /tmp && \
     cd /tmp/iprange-$IPRANGE_VERSION && \
@@ -61,12 +62,12 @@ ADD update-ipsets-periodic /bin/update-ipsets-periodic
 ADD update-countries.sh /bin/update-countries.sh
 ADD update-common.sh /bin
 
-# Add config file that configure firehol pathes as we were running as root
+# Add config file that configures firehol pathes as we were running as root
 ADD update-ipsets.conf /home/firehol-update-ipsets/.update-ipsets/update-ipsets.conf
 
 # choose which iptables command to use
-ENV IPTABLES_CMD=iptables-legacy
-# ENV IPTABLES_CMD=iptables-nft
+ENV IPTABLES_CMD=iptables-nft
+ENV IP6TABLES_CMD=ip6tables-nft
 
 # a robust default set of lists (will only be enabled once at container creation)
 ENV FIREHOL_LISTS_INIT="firehol_level1 firehol_level2"
