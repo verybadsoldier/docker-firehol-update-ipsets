@@ -20,9 +20,9 @@ update_set() {
     local set_name=$2     # e.g., geo_scope or geo_scope_v6
     local url_base=$3     # URL to download zones from
 
-    local temp_set="${set_name}_tmp"
+    local temp_set="tmp_${set_name}"
     local restore_file=$(mktemp)
-    
+    	
     echo "[$family] Starting update for set: $set_name"
 
     # Create temp set

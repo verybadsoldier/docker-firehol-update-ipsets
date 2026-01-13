@@ -89,14 +89,14 @@ setup_firewall() {
         for ip in ${WHITELIST_IPS}; do
              # Simple heuristic: dots for v4, colons for v6
              if [[ "$protocol" == "ipv4" && "$ip" == *"."* ]]; then
-                 "$cmd" -A "${chain_trusted}" -s "$ip" -j ACCEPT
+                 "$cmd" -A "${chain_trusted}" -s "$ip" -j ACCEPT -m comment --commment "Manual Whitelist IPv4"
              elif [[ "$protocol" == "ipv6" && "$ip" == *":"* ]]; then
-                 "$cmd" -A "${chain_trusted}" -s "$ip" -j ACCEPT
+                 "$cmd" -A "${chain_trusted}" -s "$ip" -j ACCEPT -m comment --comment "Manual Whitelist IPv6"
              fi
         done
     fi
     "$cmd" -A "${chain_trusted}" -j RETURN
-    
+
     # Insert Trusted Check
     "$cmd" -A "${FIREHOL_CHAIN}" -j "${chain_trusted}"
 
@@ -104,9 +104,9 @@ setup_firewall() {
     if [ "$GEO_ENABLED" == "true" ]; then
         if ipset list -n | grep -q "^${geo_set}$"; then
             echo "  [+] Active Geo-Blocking for $protocol"
-            "$cmd" -A "${FIREHOL_CHAIN}" -p tcp --syn -m set ! --match-set "${geo_set}" src -j DROP
+            "$cmd" -A "${FIREHOL_CHAIN}" -p tcp --syn -m set ! --match-set "${geo_set}" src -j DROP -m comment --comment "Geo-Blocking TCP-Connects"
             # Optional: UDP Port 443 Block (QUIC)
-            "$cmd" -A "${FIREHOL_CHAIN}" -p udp --dport 443 -m set ! --match-set "${geo_set}" src -j DROP
+            "$cmd" -A "${FIREHOL_CHAIN}" -p udp --dport 443 -m set ! --match-set "${geo_set}" src -j DROP -m comment --comment "Geo-Blocking UDP Port 443"
         else
             echo "  [!] Warning: IPSet $geo_set missing. Skipping rule."
         fi
@@ -119,7 +119,7 @@ setup_firewall() {
             i="${i%.*}" # Remove extension
             # Using -S check to avoid duplicates
             if [[ -z $("$cmd" -S "${FIREHOL_CHAIN}" | grep "match-set $i src") ]]; then
-                 "$cmd" -A "${FIREHOL_CHAIN}" -m set --match-set $i src -j DROP
+                "$cmd" -A "${FIREHOL_CHAIN}" -m set --match-set $i src -j DROP -m comment --comment "FireHOL: $i"
             fi
         done
     fi
@@ -169,7 +169,8 @@ echo "Dual-Stack Firewall setup complete. Entering maintenance loop."
 LOOP_COUNT=0
 while :
 do
-    update-ipsets -s >/dev/null 2>&1
+    echo "Updating FireHOL lists..."
+    update-ipsets -s
 
     ((LOOP_COUNT++))
     if [ "$GEO_ENABLED" == "true" ] && [ $((LOOP_COUNT % 6)) -eq 0 ]; then
