@@ -2,30 +2,35 @@
 
 # =============================================================================
 # MINION FIREWALL SETUP - FINAL DUAL STACK VERSION (IPv4 + IPv6)
-# Logic: Stateful Inspection + TCP-SYN Geo Gatekeeper + FireHOL Blacklists
+# Logic: Stateful Inspection + TCP-SYN Geo Whitelist + FireHOL Blacklists
 # =============================================================================
 
 readonly FIREHOL_CHAIN=FIREHOL_BLACKLIST
 
 # --- CONFIGURATION & COMMANDS ---
-# FIX: Allow overriding commands via Docker Env (e.g. for iptables-nft)
 IPTABLES_CMD=${IPTABLES_CMD:-iptables}
 IP6TABLES_CMD=${IP6TABLES_CMD:-ip6tables}
 
 readonly CHAIN_TRUSTED="TRUSTED_BYPASS"
-readonly IPSET_GEO="geo_scope"
-readonly IPSET_GEO_V6="geo_scope_v6"
+readonly IPSET_WHITELIST="geo_whitelist"
+readonly IPSET_WHITELIST_V6="geo_whitelist_v6"
 readonly COUNTRY_UPDATE_SCRIPT="/bin/update-countries.sh"
 
-# Check if Geo Scope should be enabled.
-COUNTRIES_VAR="${GEO_SCOPE_COUNTRIES:-${WHITELIST_COUNTRIES:-}}"
+# --- GEO WHITELIST CONFIGURATION ---
+# Logic:
+# 1. Countries must be defined via GEO_WHITELIST_COUNTRIES.
+# 2. FEATURE TOGGLE (GEO_WHITELIST_ENABLED) must be "true" or unset (defaults to true).
 
-if [ -z "${COUNTRIES_VAR}" ]; then
-    echo "CONFIGURATION: No countries defined. Geo Scoping is DISABLED."
-    GEO_ENABLED="false"
-else
-    echo "CONFIGURATION: Countries detected. Geo Scoping is ENABLED."
+if [ -n "${GEO_WHITELIST_COUNTRIES}" ] && [ "${GEO_WHITELIST_ENABLED:-true}" == "true" ]; then
+    echo "CONFIGURATION: Countries detected (${GEO_WHITELIST_COUNTRIES}) and Geo Whitelist ENABLED."
     GEO_ENABLED="true"
+else
+    if [ -z "${GEO_WHITELIST_COUNTRIES}" ]; then
+        echo "CONFIGURATION: No countries defined. Geo Whitelist is DISABLED."
+    else
+        echo "CONFIGURATION: Countries defined but Geo Whitelist explicitly DISABLED via GEO_WHITELIST_ENABLED=false."
+    fi
+    GEO_ENABLED="false"
 fi
 
 # =============================================================================
@@ -39,12 +44,10 @@ setup_firewall() {
     echo "--- Setting up $protocol Firewall ($cmd) ---"
 
     # 1. Initialize & Flush Chain
-    # We suppress errors on creation (-N) but not on flush (-F) to see issues.
     "$cmd" -N "${FIREHOL_CHAIN}" >/dev/null 2>&1 || true
     "$cmd" -F "${FIREHOL_CHAIN}"
 
     # 2. Hook into INPUT and DOCKER-USER
-    # FIX: Check if chain exists to avoid errors if Docker is not ready/using different backend
     for chain in INPUT DOCKER-USER; do
         if "$cmd" -L "${chain}" -n >/dev/null 2>&1; then
             "$cmd" -D "${chain}" -j "${FIREHOL_CHAIN}" >/dev/null 2>&1 || true
@@ -89,7 +92,7 @@ setup_firewall() {
         for ip in ${WHITELIST_IPS}; do
              # Simple heuristic: dots for v4, colons for v6
              if [[ "$protocol" == "ipv4" && "$ip" == *"."* ]]; then
-                 "$cmd" -A "${chain_trusted}" -s "$ip" -j ACCEPT -m comment --commment "Manual Whitelist IPv4"
+                 "$cmd" -A "${chain_trusted}" -s "$ip" -j ACCEPT -m comment --comment "Manual Whitelist IPv4"
              elif [[ "$protocol" == "ipv6" && "$ip" == *":"* ]]; then
                  "$cmd" -A "${chain_trusted}" -s "$ip" -j ACCEPT -m comment --comment "Manual Whitelist IPv6"
              fi
@@ -100,13 +103,13 @@ setup_firewall() {
     # Insert Trusted Check
     "$cmd" -A "${FIREHOL_CHAIN}" -j "${chain_trusted}"
 
-    # 6. GEO SCOPE (TCP SYN ONLY)
+    # 6. GEO WHITELIST (TCP SYN ONLY)
     if [ "$GEO_ENABLED" == "true" ]; then
         if ipset list -n | grep -q "^${geo_set}$"; then
-            echo "  [+] Active Geo-Blocking for $protocol"
-            "$cmd" -A "${FIREHOL_CHAIN}" -p tcp --syn -m set ! --match-set "${geo_set}" src -j DROP -m comment --comment "Geo-Blocking TCP-Connects"
+            echo "  [+] Active Geo-Whitelist for $protocol"
+            "$cmd" -A "${FIREHOL_CHAIN}" -p tcp --syn -m set ! --match-set "${geo_set}" src -j DROP -m comment --comment "Geo-Whitelist TCP"
             # Optional: UDP Port 443 Block (QUIC)
-            "$cmd" -A "${FIREHOL_CHAIN}" -p udp --dport 443 -m set ! --match-set "${geo_set}" src -j DROP -m comment --comment "Geo-Blocking UDP Port 443"
+            "$cmd" -A "${FIREHOL_CHAIN}" -p udp --dport 443 -m set ! --match-set "${geo_set}" src -j DROP -m comment --comment "Geo-Whitelist QUIC"
         else
             echo "  [!] Warning: IPSet $geo_set missing. Skipping rule."
         fi
@@ -117,7 +120,6 @@ setup_firewall() {
         for i in $(find /etc/firehol/ipsets -maxdepth 1 -name "*.enabled"); do
             i="${i##*/}" # Basename
             i="${i%.*}" # Remove extension
-            # Using -S check to avoid duplicates
             if [[ -z $("$cmd" -S "${FIREHOL_CHAIN}" | grep "match-set $i src") ]]; then
                 "$cmd" -A "${FIREHOL_CHAIN}" -m set --match-set $i src -j DROP -m comment --comment "FireHOL: $i"
             fi
@@ -146,16 +148,16 @@ echo "----------------------------------------------------------------"
 
 # 2. Update Geo Data
 if [ "$GEO_ENABLED" == "true" ] && [ -f "$COUNTRY_UPDATE_SCRIPT" ]; then
-    echo "Initializing Geo Data..."
-    GEO_IPSET_NAME="$IPSET_GEO" bash "$COUNTRY_UPDATE_SCRIPT"
+    echo "Initializing Geo Whitelist..."
+    GEO_IPSET_NAME="$IPSET_WHITELIST" bash "$COUNTRY_UPDATE_SCRIPT"
 fi
 
 # 3. Apply Firewall Rules
-setup_firewall "${IPTABLES_CMD}" "${IPSET_GEO}" "ipv4"
+setup_firewall "${IPTABLES_CMD}" "${IPSET_WHITELIST}" "ipv4"
 
 # Setup IPv6 (Only if command exists)
 if command -v "${IP6TABLES_CMD}" >/dev/null; then
-    setup_firewall "${IP6TABLES_CMD}" "${IPSET_GEO_V6}" "ipv6"
+    setup_firewall "${IP6TABLES_CMD}" "${IPSET_WHITELIST_V6}" "ipv6"
 else
     echo "WARNING: $IP6TABLES_CMD not found. IPv6 remains unprotected!"
 fi
@@ -174,8 +176,8 @@ do
 
     ((LOOP_COUNT++))
     if [ "$GEO_ENABLED" == "true" ] && [ $((LOOP_COUNT % 6)) -eq 0 ]; then
-        echo "Updating Geo Scope lists..."
-        GEO_IPSET_NAME="$IPSET_GEO" bash "$COUNTRY_UPDATE_SCRIPT"
+        echo "Updating Geo Whitelist..."
+        GEO_IPSET_NAME="$IPSET_WHITELIST" bash "$COUNTRY_UPDATE_SCRIPT"
     fi
 
     sleep $((($RANDOM % 20 + 50) * 10)) 
