@@ -32,7 +32,7 @@ update_set() {
 
     # Loop through countries
     for country in $COUNTRIES; do
-        # echo "  - Downloading $country ($family)..."
+        echo "  - Downloading $country ($family)..."
         
         # Download, filter for valid IPs (hex/colons for v6, dots/nums for v4), and format
         wget -qO - "${url_base}/${country}.zone" | \
@@ -45,7 +45,8 @@ update_set() {
     done
 
     # Restore to temp set
-    ipset restore < "$restore_file"
+    echo "  - Restoring to temporary set $temp_set from $restore_file..."
+    ipset restore -exist < "$restore_file"
 
     # Create production set if missing
     ipset create "$set_name" hash:net family "$family" hashsize 2048 maxelem $MAXELEM -exist

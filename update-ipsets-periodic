@@ -174,11 +174,11 @@ do
     echo "Updating FireHOL lists..."
     update-ipsets -s
 
-    ((LOOP_COUNT++))
     if [ "$GEO_ENABLED" == "true" ] && [ $((LOOP_COUNT % 6)) -eq 0 ]; then
         echo "Updating Geo Whitelist..."
-        GEO_IPSET_NAME="$IPSET_WHITELIST" bash "$COUNTRY_UPDATE_SCRIPT"
+        GEO_IPSET_NAME="$IPSET_WHITELIST" GEO_SCOPE_COUNTRIES="${GEO_WHITELIST_COUNTRIES}" bash "$COUNTRY_UPDATE_SCRIPT"
     fi
+    ((LOOP_COUNT++))
 
     sleep $((($RANDOM % 20 + 50) * 10)) 
 done
